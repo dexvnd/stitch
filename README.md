@@ -71,6 +71,10 @@ stitch/
 │   └── process.rs     enumerates and filters Python processes
 ```
 
+## Credits
+
+Project idea and name by [Body-Alhoha](https://github.com/Body-Alhoha).
+
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.

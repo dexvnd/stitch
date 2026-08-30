@@ -1,0 +1,42 @@
+[package]
+name = "stitch"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "stitch_stub"
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[[bin]]
+name = "stitch"
+path = "src/main.rs"
+
+[dependencies]
+eframe = "0.29"
+egui = "0.29"
+egui_code_editor = "=0.2.10"
+base64 = "0.22"
+rfd = "0.15"
+
+[dependencies.windows]
+version = "0.58"
+features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Pipes",
+    "Win32_System_IO",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Threading",
+    "Win32_System_SystemServices",
+    "Win32_System_Memory",
+    "Win32_System_ProcessStatus",
+    "Win32_Security",
+]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

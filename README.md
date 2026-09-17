@@ -1,6 +1,6 @@
 <div align="center">
 
-  # Stitch 
+  # Stitch
 
   **Inject and run live Python code inside any running process**
 

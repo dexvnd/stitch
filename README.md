@@ -23,7 +23,7 @@ Stitch finds Python processes running on your machine, attaches to one, and open
 ## Features
 
 - Automatically finds running Python processes and shows which version they're using
-- Live code execution, with output and tracebacks piped straight back into the app
+- Live code execution, output and tracebacks print straight to the target process's terminal
 - Inspector panel that slides out and lets you poke around the process, loaded modules, running threads with their stacks, and the live globals (functions, classes and variables as they are right now)
 - Bake any script into a standalone DLL that runs itself the moment it's injected, no Stitch needed on the other end
 - Script folder with support for custom `.py` files. Save with Ctrl+S, run with Ctrl+Enter

@@ -79,12 +79,26 @@ fn stub_main() {
         }
 
         loop {
-            let code = match pipe::read_message(&conn) {
+            let message = match pipe::read_message(&conn) {
                 Ok(Some(bytes)) => bytes,
                 _ => break,
             };
-            let code = String::from_utf8_lossy(&code);
-            let out = cpython.eval_capture(&code);
+            let (mode, rest) = match message.split_first() {
+                Some(parts) => parts,
+                None => {
+                    if pipe::write_message(&conn, b"").is_err() {
+                        break;
+                    }
+                    continue;
+                }
+            };
+            let code = String::from_utf8_lossy(rest);
+            let out = if *mode == b'C' {
+                cpython.eval_capture(&code)
+            } else {
+                cpython.eval(&code);
+                String::new()
+            };
 
             if pipe::write_message(&conn, out.as_bytes()).is_err() {
                 break;

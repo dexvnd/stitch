@@ -12,7 +12,7 @@ use crate::process::{self, PythonProcess};
 enum ConnEvent {
     Connected,
     Failed(String),
-    Output(String),
+    Output,
     Modules(String),
     Threads(String),
     Globals(String),
@@ -91,7 +91,6 @@ pub struct StitchApp {
     selected_pid: Option<u32>,
     connected: bool,
     status: String,
-    last_output: String,
     code: String,
     scripts_dir: PathBuf,
     scripts: Vec<PathBuf>,
@@ -168,7 +167,6 @@ impl StitchApp {
             selected_pid: None,
             connected: false,
             status: "not connected".to_string(),
-            last_output: String::new(),
             code: String::new(),
             scripts_dir: PathBuf::from("./scripts"),
             scripts: Vec::new(),
@@ -297,10 +295,10 @@ impl StitchApp {
 
             while let Ok(request) = cmd_rx.recv() {
                 let (payload, kind) = match request {
-                    Request::Exec(code) => (code, 0u8),
-                    Request::Modules => (MODULES_SCRIPT.to_string(), 1u8),
-                    Request::Threads => (THREADS_SCRIPT.to_string(), 2u8),
-                    Request::Globals => (GLOBALS_SCRIPT.to_string(), 3u8),
+                    Request::Exec(code) => (format!("E{code}"), 0u8),
+                    Request::Modules => (format!("C{MODULES_SCRIPT}"), 1u8),
+                    Request::Threads => (format!("C{THREADS_SCRIPT}"), 2u8),
+                    Request::Globals => (format!("C{GLOBALS_SCRIPT}"), 3u8),
                 };
                 if pipe::write_message(&conn, payload.as_bytes()).is_err() {
                     let _ = event_tx.send(ConnEvent::Disconnected);
@@ -313,7 +311,7 @@ impl StitchApp {
                             1 => ConnEvent::Modules(out),
                             2 => ConnEvent::Threads(out),
                             3 => ConnEvent::Globals(out),
-                            _ => ConnEvent::Output(out),
+                            _ => ConnEvent::Output,
                         };
                         let _ = event_tx.send(event);
                     }
@@ -587,8 +585,7 @@ impl StitchApp {
                         self.connecting = false;
                         lost_connection = true;
                     }
-                    ConnEvent::Output(out) => {
-                        self.last_output = out;
+                    ConnEvent::Output => {
                         self.status = "connected".to_string();
                     }
                     ConnEvent::Modules(out) => {
@@ -1006,27 +1003,6 @@ impl eframe::App for StitchApp {
                     ui.label(&self.status);
                 });
             });
-
-        if !self.last_output.is_empty() {
-            egui::TopBottomPanel::bottom("output").show(ctx, |ui| {
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("Output").strong());
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.small_button("Clear").clicked() {
-                            self.last_output.clear();
-                        }
-                    });
-                });
-                ui.separator();
-                egui::ScrollArea::vertical().max_height(140.0).show(ui, |ui| {
-                    ui.add(
-                        egui::Label::new(egui::RichText::new(&self.last_output).monospace())
-                            .selectable(true),
-                    );
-                });
-            });
-        }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {

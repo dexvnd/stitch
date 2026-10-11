@@ -43,7 +43,7 @@ impl std::fmt::Display for InjectError {
     }
 }
 
-static STUB_DLL_BYTES: &[u8] = include_bytes!(env!("STITCH_STUB_DLL_PATH"));
+pub(crate) static STUB_DLL_BYTES: &[u8] = include_bytes!(env!("STITCH_STUB_DLL_PATH"));
 
 pub fn extract_stub_dll() -> std::io::Result<std::path::PathBuf> {
     use std::sync::atomic::{AtomicU32, Ordering};

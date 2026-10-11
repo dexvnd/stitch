@@ -1,6 +1,7 @@
 pub mod pipe;
 pub mod python;
 
+use std::cell::UnsafeCell;
 use std::ffi::c_void;
 
 use windows::Win32::Foundation::{BOOL, HINSTANCE};
@@ -15,23 +16,32 @@ pub extern "system" fn DllMain(_module: HINSTANCE, reason: u32, _reserved: *mut 
     BOOL(1)
 }
 
+pub const PAYLOAD_MAGIC: &[u8] = b"STITCHPL";
+pub const PAYLOAD_CAPACITY: usize = 16384;
+
+#[repr(transparent)]
+pub struct Payload(UnsafeCell<[u8; PAYLOAD_CAPACITY]>);
+unsafe impl Sync for Payload {}
+
 #[unsafe(no_mangle)]
-pub static STITCH_PAYLOAD: [u8; 16384] = {
-    let mut buf = [0u8; 16384];
-    buf[0] = 0x53;
-    buf[1] = 0x54;
-    buf[2] = 0x49;
-    buf[3] = 0x54;
-    buf[4] = 0x43;
-    buf[5] = 0x48;
-    buf[6] = 0x50;
-    buf[7] = 0x4C;
+#[used]
+pub static STITCH_PAYLOAD: Payload = Payload(UnsafeCell::new({
+    let mut buf = [0u8; PAYLOAD_CAPACITY];
+    let mut i = 0;
+    while i < PAYLOAD_MAGIC.len() {
+        buf[i] = PAYLOAD_MAGIC[i];
+        i += 1;
+    }
     buf
-};
+}));
 
 fn get_payload() -> Option<String> {
-    let bytes = &STITCH_PAYLOAD;
-    let payload_bytes = &bytes[8..];
+    let base = STITCH_PAYLOAD.0.get() as *const u8;
+    let mut buf = [0u8; PAYLOAD_CAPACITY];
+    for i in 0..PAYLOAD_CAPACITY {
+        buf[i] = unsafe { std::ptr::read_volatile(base.add(i)) };
+    }
+    let payload_bytes = &buf[PAYLOAD_MAGIC.len()..];
     let end = payload_bytes.iter().position(|&b| b == 0).unwrap_or(0);
     if end == 0 {
         return None;
@@ -43,26 +53,24 @@ fn get_payload() -> Option<String> {
 }
 
 fn stub_main() {
-    let Ok(conn) = pipe::client::connect(pipe::PIPE_NAME) else {
-        if let Ok(cpython) = python::CPython::init() {
-            if let Some(code) = get_payload() {
-                cpython.eval(&code);
-            }
-        }
-        return;
-    };
-
     let cpython = match python::CPython::init() {
         Ok(c) => c,
         Err(e) => {
-            let _ = pipe::write_message(&conn, format!("ERR:{e}").as_bytes());
+            if let Ok(conn) = pipe::client::connect(pipe::PIPE_NAME) {
+                let _ = pipe::write_message(&conn, format!("ERR:{e}").as_bytes());
+            }
             return;
         }
     };
 
     if let Some(code) = get_payload() {
         cpython.eval(&code);
+        return;
     }
+
+    let Ok(conn) = pipe::client::connect(pipe::PIPE_NAME) else {
+        return;
+    };
 
     let mut conn = conn;
     loop {
@@ -76,9 +84,9 @@ fn stub_main() {
                 _ => break,
             };
             let code = String::from_utf8_lossy(&code);
-            cpython.eval(&code);
+            let out = cpython.eval_capture(&code);
 
-            if pipe::write_message(&conn, b"").is_err() {
+            if pipe::write_message(&conn, out.as_bytes()).is_err() {
                 break;
             }
         }

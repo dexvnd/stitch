@@ -6,13 +6,12 @@ use windows::Win32::Foundation::HMODULE;
 use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress};
 
 const PYTHON_DLL_NAMES: &[&str] = &[
-    "Python311.dll", "Python310.dll", "Python39.dll", "Python38.dll",
-    "Python37.dll", "Python36.dll", "Python35.dll", "Python34.dll",
-    "Python33.dll", "Python32.dll", "Python31.dll", "Python30.dll",
+    "Python314.dll", "Python313.dll", "Python312.dll", "Python311.dll",
+    "Python310.dll", "Python39.dll", "Python38.dll", "Python37.dll",
+    "Python36.dll", "Python35.dll", "Python34.dll", "Python33.dll",
+    "Python32.dll", "Python31.dll", "Python30.dll",
 ];
 
-type PySetProgramNameFn = unsafe extern "C" fn(*const u16);
-type PyEvalInitThreadsFn = unsafe extern "C" fn();
 type PyGilStateEnsureFn = unsafe extern "C" fn() -> c_int;
 type PyGilStateReleaseFn = unsafe extern "C" fn(c_int);
 type PyRunSimpleStringFlagsFn = unsafe extern "C" fn(*const i8, *const c_void) -> c_int;
@@ -56,26 +55,19 @@ impl CPython {
             if let Ok(h) = handle {
                 if !h.is_invalid() {
                     found = Some(h);
+                    break;
                 }
             }
         }
         let module = found.ok_or(InitError::NoPythonModuleFound)?;
 
         unsafe {
-            let py_set_program_name: PySetProgramNameFn =
-                resolve(module, "Py_SetProgramName")?;
-            let py_eval_init_threads: PyEvalInitThreadsFn =
-                resolve(module, "PyEval_InitThreads")?;
             let py_gilstate_ensure: PyGilStateEnsureFn =
                 resolve(module, "PyGILState_Ensure")?;
             let py_gilstate_release: PyGilStateReleaseFn =
                 resolve(module, "PyGILState_Release")?;
             let py_run_simple_string_flags: PyRunSimpleStringFlagsFn =
                 resolve(module, "PyRun_SimpleStringFlags")?;
-
-            let program_name: Vec<u16> = "Stitch\0".encode_utf16().collect();
-            py_set_program_name(program_name.as_ptr());
-            py_eval_init_threads();
 
             Ok(Self {
                 py_gilstate_ensure,
@@ -95,5 +87,50 @@ impl CPython {
             (self.py_run_simple_string_flags)(c_code.as_ptr(), std::ptr::null());
             (self.py_gilstate_release)(state);
         }
+    }
+
+    pub fn eval_capture(&self, code: &str) -> String {
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+
+        let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let mut out_path = std::env::temp_dir();
+        out_path.push(format!("stitch_out_{}_{}.txt", std::process::id(), unique));
+        let out_str = out_path.to_string_lossy().replace('\\', "/");
+        let encoded = STANDARD.encode(code);
+
+        let wrapper = format!(
+            "import sys, io, base64, traceback
+__stitch_buf = io.StringIO()
+__stitch_old = (sys.stdout, sys.stderr)
+sys.stdout = __stitch_buf
+sys.stderr = __stitch_buf
+try:
+    exec(compile(base64.b64decode('{encoded}').decode('utf-8'), '<stitch>', 'exec'), __import__('__main__').__dict__)
+except Exception:
+    traceback.print_exc()
+finally:
+    sys.stdout, sys.stderr = __stitch_old
+try:
+    open('{out_str}', 'w', encoding='utf-8').write(__stitch_buf.getvalue())
+except Exception:
+    pass
+"
+        );
+
+        let c_code = match CString::new(wrapper) {
+            Ok(c) => c,
+            Err(_) => return String::new(),
+        };
+        unsafe {
+            let state = (self.py_gilstate_ensure)();
+            (self.py_run_simple_string_flags)(c_code.as_ptr(), std::ptr::null());
+            (self.py_gilstate_release)(state);
+        }
+
+        let data = std::fs::read(&out_path).unwrap_or_default();
+        let _ = std::fs::remove_file(&out_path);
+        String::from_utf8_lossy(&data).into_owned()
     }
 }

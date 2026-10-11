@@ -23,8 +23,10 @@ Stitch finds Python processes running on your machine, attaches to one, and open
 ## Features
 
 - Automatically finds running Python processes and shows which version they're using
-- Live code execution.
-- Script folder with support for custom `.py` files.
+- Live code execution, with output and tracebacks piped straight back into the app
+- Inspector panel that slides out and lets you poke around the process, loaded modules, running threads with their stacks, and the live globals (functions, classes and variables as they are right now)
+- Bake any script into a standalone DLL that runs itself the moment it's injected, no Stitch needed on the other end
+- Script folder with support for custom `.py` files. Save with Ctrl+S, run with Ctrl+Enter
 - Create new scripts directly from the UI
 - No dependencies required on the target machine, Stitch uses the Python interpreter already running in the process
 
@@ -51,6 +53,8 @@ The build script compiles the stub DLL and embeds it into `stitch.exe` automatic
 3. Select the process from the list on the left and click **Connect**
 4. Type or load a script and click **Execute**
 
+Once you're connected, open the Inspector on the right to see what's going on inside — modules, threads, globals. And if you'd rather have a script just run on its own, hit **Build DLL** to bake it into a DLL you can drop into any process however you like.
+
 ## How it works
 
 When you connect to a python process Stitch injects a small stub into the target process using the standard Windows loader API. The stub initialises the CPython runtime inside the target, connects back to Stitch over a named pipe. Reading code, executing it under the GIL, and sending the output back. The pipe stays open so you can keep sending code without reconnecting.
@@ -68,6 +72,7 @@ stitch/
 │   ├── python.rs      CPython API resolved at runtime
 │   ├── pipe.rs        named pipe for communicating between exe and stub
 │   ├── injector.rs    loads the stub into the target process
+│   ├── builder.rs     bakes a script into a standalone injectable DLL
 │   └── process.rs     enumerates and filters Python processes
 ```
 
